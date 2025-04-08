@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+	<meta charset="UTF-8">
+	<title>Codes</title>
+	<style>
+		body {
+			margin: 0;
+			font-family: 'Segoe UI', sans-serif;
+			background: #111;
+			color: #0f0;
+			height: 100vh;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: flex-start;
+			padding: 10px;
+			gap: 20px;
+		}
+
+		input, .code-display {
+			background: #222;
+			color: #0f0;
+			border: 1px solid #0f0;
+			padding: 8px 12px;
+			font-family: monospace;
+			font-weight: bold;
+			font-size: 1.5em;
+			width: 99vw;
+			box-sizing: border-box;
+			text-align: center;
+			cursor: pointer;
+			position: relative;
+		}
+
+		.code-display {
+			border: none;
+			background: transparent;
+			color: white;
+		}
+
+		#progressBar {
+			height: 5px;
+			width: 99vw;
+			background: #333;
+			position: relative;
+			overflow: hidden;
+		}
+
+		#progressFill {
+			height: 100%;
+			background: #0f0;
+			transform-origin: left;
+			transform: scaleX(1);
+			transition: transform 1s linear;
+		}
+
+		.secret-wrapper {
+			width: 100%;
+			max-width: 100%;
+		}
+		
+		hr {
+			margin-bottom: 20px;
+		}
+		
+		.secret-wrapper {
+			position: relative;
+			width: 100%;
+			max-width: 100%;
+		}
+
+		.copy-hint {
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: #0f0;
+			font-size: 0.8em;
+			background: rgba(0, 0, 0, 0.8);
+			padding: 4px 8px;
+			border-radius: 5px;
+			opacity: 0;
+			pointer-events: none;
+			transition: opacity 0.3s ease;
+			white-space: nowrap;
+			z-index: 2;
+		}
+
+		.secret-wrapper:hover .copy-hint {
+			opacity: 1;
+		}
+
+	</style>
+</head>
+<body>
+	<div id="app"></div>
+
+<script>
+	function base32toBytes(base32) {
+		const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		let bits = "", bytes = [];
+		base32 = base32.replace(/=+$/, "").toUpperCase().replace(/[^A-Z2-7]/g, "");
+		for (let i = 0; i < base32.length; i++) {
+			let val = alphabet.indexOf(base32[i]);
+			bits += val.toString(2).padStart(5, "0");
+		}
+		for (let i = 0; i + 8 <= bits.length; i += 8)
+			bytes.push(parseInt(bits.substring(i, i + 8), 2));
+		return new Uint8Array(bytes);
+	}
+
+	async function generateTOTP(secret, timeStep = 30, digits = 6) {
+		const key = await crypto.subtle.importKey(
+			"raw",
+			base32toBytes(secret),
+			{ name: "HMAC", hash: "SHA-1" },
+			false,
+			["sign"]
+		);
+
+		const epoch = Math.floor(Date.now() / 1000);
+		const counter = Math.floor(epoch / timeStep);
+		const buffer = new ArrayBuffer(8);
+		const view = new DataView(buffer);
+		view.setUint32(4, counter);
+
+		const hmac = await crypto.subtle.sign("HMAC", key, buffer);
+		const h = new Uint8Array(hmac);
+		const offset = h[h.length - 1] & 0xf;
+		const code = ((h[offset] & 0x7f) << 24 | (h[offset + 1] & 0xff) << 16 | (h[offset + 2] & 0xff) << 8 | (h[offset + 3] & 0xff)) % (10 ** digits);
+		return code.toString().padStart(digits, '0');
+	}
+
+	function createTOTPBlock(secret, name) {
+		const wrapper = document.createElement('div');
+		wrapper.className = 'secret-wrapper';
+
+		const secretInput = document.createElement('input');
+		secretInput.type = 'text';
+		secretInput.readOnly = true;
+
+		let showingName = !!name;
+		const label = () => showingName ? name : secret;
+		secretInput.value = label();
+
+		secretInput.onclick = () => {
+			if (!name) return;
+			showingName = !showingName;
+			secretInput.value = label();
+		};
+
+		wrapper.appendChild(secretInput);
+
+		const codeDiv = document.createElement('div');
+		codeDiv.className = 'code-display';
+		codeDiv.textContent = '------';
+		codeDiv.onclick = () => navigator.clipboard.writeText(codeDiv.textContent);
+
+		const progressBar = document.createElement('div');
+		progressBar.id = 'progressBar';
+		const fill = document.createElement('div');
+		fill.id = 'progressFill';
+		progressBar.appendChild(fill);
+
+		wrapper.appendChild(codeDiv);
+		wrapper.appendChild(progressBar);
+
+		document.getElementById('app').appendChild(wrapper);
+		document.getElementById('app').appendChild(document.createElement('hr'));
+
+		async function updateCode() {
+			const totp = await generateTOTP(secret);
+			codeDiv.textContent = totp;
+		}
+
+		async function tick() {
+			const now = Math.floor(Date.now() / 1000);
+			const remaining = 30 - (now % 30);
+			fill.style.transform = `scaleX(${remaining / 30})`;
+			if (remaining === 30 || remaining === 0) await updateCode();
+		}
+
+		setInterval(tick, 1000);
+		updateCode();
+		tick();
+	}
+
+	function getPairsFromURL() {
+		const params = new URLSearchParams(window.location.search);
+		const secrets = params.getAll('secret');
+		const names = params.getAll('name');
+		return secrets.map((secret, i) => ({ secret, name: names[i] }));
+	}
+
+	function saveToLocalStorage(pairs) {
+		localStorage.setItem('totpPairs', JSON.stringify(pairs));
+	}
+
+	function getFromLocalStorage() {
+		const data = localStorage.getItem('totpPairs');
+		return data ? JSON.parse(data) : [];
+	}
+
+	window.onload = () => {
+		const urlPairs = getPairsFromURL();
+		if (urlPairs.length > 0) {
+			saveToLocalStorage(urlPairs);
+			urlPairs.forEach(({ secret, name }) => createTOTPBlock(secret, name));
+		} else {
+			const storedPairs = getFromLocalStorage();
+			if (storedPairs.length > 0) {
+				storedPairs.forEach(({ secret, name }) => createTOTPBlock(secret, name));
+			} else {
+				createTOTPBlock('', '');
+			}
+		}
+	};
+</script>
+
+</body>
+</html>
