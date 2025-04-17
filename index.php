@@ -1,11 +1,9 @@
 <?php
 
-// Secrets List
+// Fixed list of secrets
 $pairs = [
-    ['secret' => 'JBSWY3DPEHPK3PXP', 'name' => 'Google Account'],
-    ['secret' => 'NB2W45DFOIZA====', 'name' => 'Outlook Account']
+    ['secret' => 'secret', 'name' => 'www']
 ];
-
 function base32_decode($b32) {
     $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     $b32 = strtoupper($b32);
@@ -40,24 +38,33 @@ function generate_totp($secret, $timeStep = 30, $digits = 6) {
     return str_pad($value % $modulo, $digits, '0', STR_PAD_LEFT);
 }
 
-// Adding GET parameters
-if (isset($_GET['secret']) && isset($_GET['name'])) {
-    $secrets = (array) $_GET['secret'];
-    $names = (array) $_GET['name'];
-    foreach ($secrets as $i => $secret) {
-        $pairs[] = [
-            'secret' => $secret,
-            'name' => $names[$i] ?? 'NoName'
-        ];
+// Parse query string manually
+if (!empty($_SERVER['QUERY_STRING'])) {
+    $rawParams = explode('&', $_SERVER['QUERY_STRING']);
+    $pendingName = null;
+    foreach ($rawParams as $param) {
+        [$key, $value] = explode('=', $param, 2);
+        $key = urldecode($key);
+        $value = urldecode($value);
+
+        if ($key === 'name') {
+            $pendingName = $value;
+        } elseif ($key === 'secret' && $pendingName !== null) {
+            $pairs[] = [
+                'name' => $pendingName,
+                'secret' => $value
+            ];
+            $pendingName = null;
+        }
+        // Ignore other keys like issuer
     }
 }
 
-// Calculates the 30s cycles
+// Calculate seconds remaining to the next TOTP cycle
 $now = time();
 $timeStep = 30;
 $secondsRemaining = $timeStep - ($now % $timeStep);
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -91,7 +98,6 @@ $secondsRemaining = $timeStep - ($now % $timeStep);
         }
     </style>
 </head>
-	
 <body>
 <h1>Codes</h1>
 <?php foreach ($pairs as $pair): ?>
