@@ -28,7 +28,7 @@ index.htm?secret=SECRET1&name=Google%20Account1&secret=SECRET2&name=Outlook%20Ac
 
 ## 📦 PHP Version
 
-- `index.php` dynamically generates HTML embedding the `secret` and `name` pairs, **without exposing them through the URL**.
+- `index.php` dynamically generates HTML embedding the `secret` and `name` pairs, **with the option of not exposing them through the URL**.
 
 - Ideal for use cases where sensitive data needs better protection.
 
@@ -64,6 +64,6 @@ index.htm?secret=SECRETO1&name=Google%20Conta1&secret=SECRETO2&name=Outlook%20Co
 
 ## 📦 Versão PHP
 
-- `index.php` gera dinamicamente o HTML já com os pares `secret` e `name` embutidos no código, **sem necessidade de expor os secrets pela URL**.
+- `index.php` gera dinamicamente o HTML já com os pares `secret` e `name` embutidos no código, **com opção de não expor os secrets pela URL**.
 
 - Ideal para cenários onde é necessário manter os parâmetros mais protegidos.
